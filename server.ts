@@ -9,7 +9,7 @@ import {
 } from './src/server/invitationAuth';
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 
@@ -293,7 +293,10 @@ async function startServer() {
 }
 
 if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
-  startServer();
+  startServer().catch((error) => {
+    console.error('[RestaurantOS Server] Fatal startup error:', error);
+    process.exit(1);
+  });
 }
 
 export { app };
