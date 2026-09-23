@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Table, TableSession } from '../../types/table';
 import { Order } from '../../types/order';
 import { KOT } from '../../types/kot';
+import { StaffRole } from '../../types/auth';
+import { isWithinOrderCancellationWindow, getOrderCreatedAtMs, ORDER_CANCELLATION_WINDOW_MS } from '../../utils/orderCancellation';
 import {
   X,
   Users,
@@ -27,6 +29,9 @@ interface ActiveSessionModalProps {
   onCloseSession: (sessionId: string) => Promise<void>;
   onUpdateGuestCount?: (sessionId: string, newGuestCount: number) => Promise<void>;
   onUpdateKotStatus?: (kotId: string, newStatus: any) => Promise<void>;
+  onCancelKot?: (kotId: string, reason: string) => Promise<void>;
+  onCancelOrder?: (orderId: string, reason: string) => Promise<void>;
+  userRole?: StaffRole;
   onGoToPosOrder: (tableId: string) => void;
   onGoToPosSettlement: (tableId: string) => void;
   isSubmitting: boolean;
@@ -43,16 +48,37 @@ export const ActiveSessionModal: React.FC<ActiveSessionModalProps> = ({
   onCloseSession,
   onUpdateGuestCount,
   onUpdateKotStatus,
+  onCancelKot,
+  onCancelOrder,
+  userRole,
   onGoToPosOrder,
   onGoToPosSettlement,
   isSubmitting
 }) => {
-  if (!isOpen || !table || !session) return null;
-
   const [actionError, setActionError] = useState<string | null>(null);
+  const [cancelKotId, setCancelKotId] = useState<string | null>(null);
+  const [cancelKotReason, setCancelKotReason] = useState('');
+  const [showCancelOrderInput, setShowCancelOrderInput] = useState(false);
+  const [cancelOrderReason, setCancelOrderReason] = useState('');
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isOpen || !order) return;
+    setNowMs(Date.now());
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isOpen, order?.id]);
+
+  if (!isOpen || !table || !session) return null;
 
   // Filter KOTs for this table
   const tableKots = kots.filter((k) => k.tableId === table.id);
+  const orderCreatedAtMs = order ? getOrderCreatedAtMs(order.createdAt) : null;
+  const orderCancelWindowOpen = orderCreatedAtMs !== null && isWithinOrderCancellationWindow(order.createdAt, nowMs);
+  const canCancelOrder = !!order && order.status !== 'cancelled' && order.status !== 'completed' && !!onCancelOrder && (userRole !== 'captain' || orderCancelWindowOpen);
+  const remainingOrderCancelSeconds = orderCreatedAtMs !== null
+    ? Math.max(0, Math.ceil((orderCreatedAtMs + ORDER_CANCELLATION_WINDOW_MS - nowMs) / 1000))
+    : 0;
 
   // Calculate elapsed session time
   let elapsedMinutes = 0;
@@ -73,6 +99,39 @@ export const ActiveSessionModal: React.FC<ActiveSessionModalProps> = ({
       await onSendKotToKitchen(order.id, table.id);
     } catch (err: any) {
       setActionError(err?.message || 'Failed to dispatch KOT to kitchen.');
+    }
+  };
+
+  const handleConfirmCancelKot = async (kotId: string) => {
+    setActionError(null);
+    if (!cancelKotReason.trim()) {
+      setActionError('Cancellation reason is required.');
+      return;
+    }
+    if (!onCancelKot) return;
+    try {
+      await onCancelKot(kotId, cancelKotReason.trim());
+      setCancelKotId(null);
+      setCancelKotReason('');
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to cancel KOT.');
+    }
+  };
+
+  const handleConfirmCancelOrder = async () => {
+    setActionError(null);
+    if (!cancelOrderReason.trim()) {
+      setActionError('Cancellation reason is required.');
+      return;
+    }
+    if (!onCancelOrder || !order) return;
+    try {
+      await onCancelOrder(order.id, cancelOrderReason.trim());
+      setShowCancelOrderInput(false);
+      setCancelOrderReason('');
+      onClose();
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to cancel order.');
     }
   };
 
@@ -215,6 +274,35 @@ export const ActiveSessionModal: React.FC<ActiveSessionModalProps> = ({
                 There is currently no active order associated with this table session.
               </p>
             )}
+
+            {canCancelOrder && !showCancelOrderInput && (
+              <div className="pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  data-testid="session-btn-show-cancel-order"
+                  onClick={() => setShowCancelOrderInput(true)}
+                  className="w-full py-2 rounded-xl bg-slate-950 border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 font-bold text-xs inline-flex items-center justify-center gap-2 transition-colors"
+                >
+                  <span>Cancel Order</span>
+                  {userRole === 'captain' && <span className="text-[10px] text-rose-300/80">({remainingOrderCancelSeconds}s left)</span>}
+                </button>
+              </div>
+            )}
+
+            {showCancelOrderInput && canCancelOrder && (
+              <div className="mt-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 space-y-2.5">
+                <p className="text-xs font-bold text-rose-300">Cancel this order?</p>
+                <input type="text" value={cancelOrderReason} onChange={(e) => setCancelOrderReason(e.target.value)} placeholder="Enter cancellation reason..." className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-rose-500" />
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setShowCancelOrderInput(false)} className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 font-bold text-xs">Keep Order</button>
+                  <button type="button" data-testid="session-btn-confirm-cancel-order" disabled={isSubmitting} onClick={handleConfirmCancelOrder} className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs">Confirm Cancel Order</button>
+                </div>
+              </div>
+            )}
+
+            {order && userRole === 'captain' && !canCancelOrder && order.status !== 'cancelled' && order.status !== 'completed' && (
+              <p className="pt-2 text-[10px] font-semibold text-slate-500 text-center">2-minute waiter cancellation window expired. Active KOTs can still be cancelled below.</p>
+            )}
           </div>
 
           {/* Kitchen KOT Progress Section */}
@@ -274,7 +362,37 @@ export const ActiveSessionModal: React.FC<ActiveSessionModalProps> = ({
                           Serve
                         </button>
                       )}
+                      {kot.status !== 'served' && kot.status !== 'cancelled' && onCancelKot && (
+                        <button
+                          type="button"
+                          data-testid={`session-btn-cancel-kot-${kot.id}`}
+                          disabled={isSubmitting}
+                          onClick={() => {
+                            setCancelKotId(kot.id);
+                            setCancelKotReason('');
+                          }}
+                          className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-rose-600/20 text-slate-400 hover:text-rose-300 font-bold text-[10px] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      )}
                     </div>
+                    {cancelKotId === kot.id && (
+                      <div className="mt-2 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 space-y-2">
+                        <p className="text-[10px] font-bold text-rose-300">Reason for KOT cancellation</p>
+                        <input
+                          type="text"
+                          value={cancelKotReason}
+                          onChange={(e) => setCancelKotReason(e.target.value)}
+                          placeholder="Enter cancellation reason..."
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => setCancelKotId(null)} className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-bold text-[10px]">Keep</button>
+                          <button type="button" disabled={isSubmitting} data-testid={`session-btn-confirm-cancel-kot-${kot.id}`} onClick={() => handleConfirmCancelKot(kot.id)} className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px]">Confirm Cancel</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
