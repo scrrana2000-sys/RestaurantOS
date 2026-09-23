@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Order, OrderStatus } from '../../types/order';
 import { KOT, KOTStatus } from '../../types/kot';
 import { Table, TableSession } from '../../types/table';
+import { StaffRole } from '../../types/auth';
+import { isWithinOrderCancellationWindow, getOrderCreatedAtMs } from '../../utils/orderCancellation';
 import { formatMoney } from '../../utils/money';
 import {
   X,
@@ -27,6 +29,7 @@ interface OrderKotDetailModalProps {
   onUpdateKotStatus?: (kotId: string, newStatus: KOTStatus) => Promise<void>;
   onCancelKot?: (kotId: string, reason: string) => Promise<void>;
   onCancelOrder?: (orderId: string, reason: string) => Promise<void>;
+  userRole?: StaffRole;
   isSubmitting?: boolean;
 }
 
@@ -40,6 +43,7 @@ export const OrderKotDetailModal: React.FC<OrderKotDetailModalProps> = ({
   onUpdateKotStatus,
   onCancelKot,
   onCancelOrder,
+  userRole,
   isSubmitting = false
 }) => {
   const [cancelKotId, setCancelKotId] = useState<string | null>(null);
@@ -47,10 +51,21 @@ export const OrderKotDetailModal: React.FC<OrderKotDetailModalProps> = ({
   const [showCancelOrderInput, setShowCancelOrderInput] = useState<boolean>(false);
   const [cancelOrderReason, setCancelOrderReason] = useState<string>('');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isOpen || !order) return;
+    setNowMs(Date.now());
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isOpen, order?.id]);
 
   if (!isOpen || !order) return null;
 
   const orderKots = kots.filter((k) => k.orderId === order.id);
+  const orderCreatedAtMs = getOrderCreatedAtMs(order.createdAt);
+  const waiterOrderCancelWindowOpen = orderCreatedAtMs !== null && isWithinOrderCancellationWindow(order.createdAt, nowMs);
+  const canCancelOrder = !!onCancelOrder && order.status !== 'cancelled' && order.status !== 'completed' && (userRole !== 'captain' || waiterOrderCancelWindowOpen);
 
   const createdDate = order.createdAt ? new Date((order.createdAt as any)?.toDate?.() || order.createdAt) : new Date();
 
@@ -341,7 +356,7 @@ export const OrderKotDetailModal: React.FC<OrderKotDetailModalProps> = ({
           </div>
 
           {/* Cancel Order Action */}
-          {order.status !== 'cancelled' && order.status !== 'completed' && onCancelOrder && (
+          {canCancelOrder && (
             <div className="pt-4 border-t border-slate-800">
               {!showCancelOrderInput ? (
                 <button
@@ -384,6 +399,11 @@ export const OrderKotDetailModal: React.FC<OrderKotDetailModalProps> = ({
                 </div>
               )}
             </div>
+          )}
+          {order.status !== 'cancelled' && order.status !== 'completed' && userRole === 'captain' && !waiterOrderCancelWindowOpen && (
+            <p className="mt-2 text-[10px] font-semibold text-slate-500 text-center">
+              2-minute waiter cancellation window expired. Active KOTs can still be cancelled.
+            </p>
           )}
         </div>
       </div>
