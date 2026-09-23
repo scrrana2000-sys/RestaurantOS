@@ -143,7 +143,7 @@ describe('Role & Permission Foundation — M6 Phase 6A', () => {
       expect(hasPermission('captain', 'close_sessions')).toBe(true);
       expect(hasPermission('captain', 'update_kot_status')).toBe(true); // mark served
 
-      // Denied actions
+      // Restricted actions
       expect(hasPermission('captain', 'process_payments')).toBe(false);
       expect(hasPermission('captain', 'refund_payments')).toBe(false);
       expect(hasPermission('captain', 'cancel_orders')).toBe(true);
@@ -509,8 +509,18 @@ describe('Role & Permission Foundation — M6 Phase 6A', () => {
           }
           if (operation === 'update') {
             if (data?.status === 'cancelled') {
-              // Production Firestore rules additionally enforce the two-minute window for captains.
-              return isOwner || ['manager', 'captain'].includes(role || '') ? 'ALLOW' : 'DENY';
+              const createdAtMs = data?.createdAt ? new Date(data.createdAt).getTime() : NaN;
+              const elapsedMs = Date.now() - createdAtMs;
+              const captainWindowOpen =
+                role === 'captain' &&
+                data?.existingStatus !== 'completed' &&
+                data?.existingStatus !== 'cancelled' &&
+                Number.isFinite(createdAtMs) &&
+                elapsedMs >= 0 &&
+                elapsedMs <= 120000;
+
+              // Production Firestore rules enforce the same two-minute window using request.time.
+              return isOwner || role === 'manager' || captainWindowOpen ? 'ALLOW' : 'DENY';
             }
             return isOwner || ['manager', 'cashier', 'captain'].includes(role || '') ? 'ALLOW' : 'DENY';
           }
@@ -634,6 +644,22 @@ describe('Role & Permission Foundation — M6 Phase 6A', () => {
       // Cashier can create orders and process payments
       expect(evaluateRules('orders', 'create', cashierUser, 'REST_1')).toBe('ALLOW');
       expect(evaluateRules('payments', 'create', cashierUser, 'REST_1')).toBe('ALLOW');
+
+      // Captain can cancel only freshly-created orders within the two-minute window.
+      expect(
+        evaluateRules('orders', 'update', captainUser, 'REST_1', {
+          status: 'cancelled',
+          existingStatus: 'confirmed',
+          createdAt: new Date(Date.now() - 60_000)
+        })
+      ).toBe('ALLOW');
+      expect(
+        evaluateRules('orders', 'update', captainUser, 'REST_1', {
+          status: 'cancelled',
+          existingStatus: 'confirmed',
+          createdAt: new Date(Date.now() - 121_000)
+        })
+      ).toBe('DENY');
 
       // Captain can create orders and update table session link
       expect(evaluateRules('orders', 'create', captainUser, 'REST_1')).toBe('ALLOW');
