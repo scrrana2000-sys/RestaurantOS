@@ -210,7 +210,7 @@ export const PERMISSION_MATRIX: Record<StaffRole, Record<PermissionAction, boole
     view_orders: true,
     create_orders: true,
     modify_orders: true,
-    cancel_orders: false, // Captains cannot cancel orders
+    cancel_orders: true, // Waiter/Captain can cancel orders within the server-enforced 2-minute window
     process_payments: false,
     refund_payments: false,
     open_table_sessions: true,
