@@ -29,7 +29,7 @@ interface CaptainPageProps {
 
 export const CaptainPage: React.FC<CaptainPageProps> = ({ onNavigate }) => {
   const { restaurant, loading: restaurantLoading, error: restaurantError } = useRestaurant();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const restaurantId = restaurant?.restaurantId || '';
 
   // Realtime Data states
@@ -895,6 +895,9 @@ export const CaptainPage: React.FC<CaptainPageProps> = ({ onNavigate }) => {
         onCloseSession={handleCloseSessionSubmit}
         onUpdateGuestCount={handleUpdateGuestCountSubmit}
         onUpdateKotStatus={handleUpdateKotStatusSubmit}
+        onCancelKot={handleCancelKotSubmit}
+        onCancelOrder={handleCancelOrderSubmit}
+        userRole={profile?.role}
         onGoToPosOrder={handleGoToPosOrder}
         onGoToPosSettlement={handleGoToPosSettlement}
         isSubmitting={isSubmitting}
@@ -911,6 +914,7 @@ export const CaptainPage: React.FC<CaptainPageProps> = ({ onNavigate }) => {
         onUpdateKotStatus={handleUpdateKotStatusSubmit}
         onCancelKot={handleCancelKotSubmit}
         onCancelOrder={handleCancelOrderSubmit}
+        userRole={profile?.role}
         isSubmitting={isSubmitting}
       />
       {/* Table History Modal */}
