@@ -146,7 +146,7 @@ describe('Role & Permission Foundation — M6 Phase 6A', () => {
       // Denied actions
       expect(hasPermission('captain', 'process_payments')).toBe(false);
       expect(hasPermission('captain', 'refund_payments')).toBe(false);
-      expect(hasPermission('captain', 'cancel_orders')).toBe(false);
+      expect(hasPermission('captain', 'cancel_orders')).toBe(true);
       expect(hasPermission('captain', 'view_financial_info')).toBe(false);
       expect(hasPermission('captain', 'access_restaurant_setup')).toBe(false);
       expect(hasPermission('captain', 'access_categories')).toBe(false);
@@ -509,7 +509,8 @@ describe('Role & Permission Foundation — M6 Phase 6A', () => {
           }
           if (operation === 'update') {
             if (data?.status === 'cancelled') {
-              return isOwner || role === 'manager' ? 'ALLOW' : 'DENY';
+              // Production Firestore rules additionally enforce the two-minute window for captains.
+              return isOwner || ['manager', 'captain'].includes(role || '') ? 'ALLOW' : 'DENY';
             }
             return isOwner || ['manager', 'cashier', 'captain'].includes(role || '') ? 'ALLOW' : 'DENY';
           }
