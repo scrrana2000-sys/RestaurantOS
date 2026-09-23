@@ -184,7 +184,26 @@ service cloud.firestore {
               )
               || (
                 request.resource.data.status == 'cancelled'
-                && isMemberWithRole(restaurantId, 'manager')
+                && (
+                  isMemberWithRole(restaurantId, 'manager')
+                  || (
+                    isMemberWithRole(restaurantId, 'captain')
+                    && resource.data.status != 'completed'
+                    && resource.data.status != 'cancelled'
+                    && resource.data.createdAt is timestamp
+                    && request.time <= resource.data.createdAt + duration.value(2, 'm')
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly([
+                        'status',
+                        'cancellationReason',
+                        'cancelledAt',
+                        'cancelledBy',
+                        'updatedAt',
+                        'updatedBy'
+                      ])
+                    && request.resource.data.cancelledBy == request.auth.uid
+                  )
+                )
               )
             )
           );
