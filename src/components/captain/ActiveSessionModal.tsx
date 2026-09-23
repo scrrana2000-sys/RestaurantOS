@@ -322,16 +322,17 @@ export const ActiveSessionModal: React.FC<ActiveSessionModalProps> = ({
                 {tableKots.map((kot) => (
                   <div
                     key={kot.id}
-                    className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between text-xs"
+                    className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-xs space-y-2"
                   >
-                    <div>
-                      <span className="font-bold text-slate-200">{kot.kotNumber}</span>
-                      <span className="text-[11px] text-slate-400 ml-2">
-                        ({kot.items.length} items)
-                      </span>
-                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-slate-200">{kot.kotNumber}</span>
+                        <span className="text-[11px] text-slate-400 ml-2">
+                          ({kot.items.length} items)
+                        </span>
+                      </div>
 
-                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
                           kot.status === 'sentToKitchen'
@@ -376,6 +377,7 @@ export const ActiveSessionModal: React.FC<ActiveSessionModalProps> = ({
                           Cancel
                         </button>
                       )}
+                      </div>
                     </div>
                     {cancelKotId === kot.id && (
                       <div className="mt-2 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 space-y-2">
